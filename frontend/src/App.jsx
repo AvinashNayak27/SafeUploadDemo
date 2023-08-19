@@ -191,6 +191,7 @@ const Authenticate = () => {
         });
       console.log(createPostResult);
       const createPostResultvalue = createPostResult.unwrap();
+
       if (!isRelayerResult(createPostResultvalue)) {
         console.log(`Something went wrong`, createPostResultvalue);
         if (createPostResultvalue?.reason === "REJECTED") {
@@ -209,9 +210,7 @@ const Authenticate = () => {
               },
             });
           console.log(createPostResult);
-          setStatusMessage(
-            "Creating post"
-          );
+          setStatusMessage("Creating post");
           const data = createPostResultManual.unwrap();
           const signedTypedData = await wallet._signTypedData(
             data.typedData.domain,
@@ -245,9 +244,14 @@ const Authenticate = () => {
         }
       }
     } else {
-      console.log(`User is not authenticated`);
-      setStatusMessage("User is not authenticated");
-      alert("Please authenticate first");
+      await lensClient.transaction.waitForIsIndexed(createPostResultvalue.txId);
+      console.log(`Transaction was successfuly indexed`);
+      setStatusMessage("Post created");
+      const post = await lensClient.publication.fetch({
+        txHash: broadcastResultValue.txHash,
+      });
+      console.log(post);
+      setPostId(post.id);
     }
   };
 
