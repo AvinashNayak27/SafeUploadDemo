@@ -242,16 +242,22 @@ const Authenticate = () => {
           console.log(post);
           setPostId(post.id);
         }
+      } else {
+        await lensClient.transaction.waitForIsIndexed(
+          createPostResultvalue.txId
+        );
+        console.log(`Transaction was successfuly indexed`);
+        setStatusMessage("Post created");
+        const post = await lensClient.publication.fetch({
+          txHash: createPostResultvalue.txHash,
+        });
+        console.log(post);
+        setPostId(post.id);
       }
     } else {
-      await lensClient.transaction.waitForIsIndexed(createPostResultvalue.txId);
-      console.log(`Transaction was successfuly indexed`);
-      setStatusMessage("Post created");
-      const post = await lensClient.publication.fetch({
-        txHash: broadcastResultValue.txHash,
-      });
-      console.log(post);
-      setPostId(post.id);
+      console.log(`User is not authenticated`);
+      setStatusMessage("User is not authenticated");
+      alert("Please authenticate first");
     }
   };
 
