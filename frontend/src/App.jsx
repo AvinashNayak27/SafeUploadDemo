@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import {
   LensClient,
   development,
-  isCreateDataAvailabilityPublicationResult,
+  isRelayerResult,
 } from "@lens-protocol/client";
 import axios from "axios";
 import { v4 as uuid } from "uuid";
@@ -20,6 +20,7 @@ const Authenticate = () => {
   const fileInputRef = useRef(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [content, setContent] = useState("");
+  const [wallet, setWallet] = useState(null);
 
   const authenticate = async () => {
     if (typeof window.ethereum !== "undefined") {
@@ -29,6 +30,7 @@ const Authenticate = () => {
       // We don't know window.ethereum prior to runtime.
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = provider.getSigner();
+      setWallet(signer);
 
       const address = await signer.getAddress();
 
@@ -101,15 +103,14 @@ const Authenticate = () => {
         return assetResponse?.data?.asset[0]?.playbackUrl;
       } else {
         setStatusMessage(
-          "NSFW content detected : " + generateSnapshotsResponse?.data?.nsfwContent[1]
+          "NSFW content detected : " +
+            generateSnapshotsResponse?.data?.nsfwContent[1]
         );
         throw new Error(
           "NSFW content detected. Asset not uploaded to Livepeer"
         );
-
       }
-    }
-    catch (error) {
+    } catch (error) {
       console.error("Operation failed:", error.message);
     }
   };
@@ -173,41 +174,89 @@ const Authenticate = () => {
 
     console.log(`Post metadata was uploaded to ${contentURI}`);
     setStatusMessage("Metadata uploaded, creating post...");
-    const authenticateResult = await lensClient.authentication.isAuthenticated();
+    const authenticateResult =
+      await lensClient.authentication.isAuthenticated();
 
     if (authenticateResult) {
       const createPostResult =
-        await lensClient.publication.createDataAvailabilityPostViaDispatcher({
-          from: profileId,
+        await lensClient.publication.createPostViaDispatcher({
+          profileId,
           contentURI,
+          collectModule: {
+            revertCollectModule: true, // collect disabled
+          },
+          referenceModule: {
+            followerOnlyReferenceModule: false, // anybody can comment or mirror
+          },
         });
+      console.log(createPostResult);
+      const createPostResultvalue = createPostResult.unwrap();
+      if (!isRelayerResult(createPostResultvalue)) {
+        console.log(`Something went wrong`, createPostResultvalue);
+        if (createPostResultvalue?.reason === "REJECTED") {
+          setStatusMessage(
+            "Dispatcher is not set for the user. Please sign following the transaction manually "
+          );
+          const createPostResultManual =
+            await lensClient.publication.createPostTypedData({
+              profileId,
+              contentURI,
+              collectModule: {
+                revertCollectModule: true, // collect disabled
+              },
+              referenceModule: {
+                followerOnlyReferenceModule: false, // anybody can comment or mirror
+              },
+            });
+          console.log(createPostResult);
+          setStatusMessage(
+            "Creating post"
+          );
+          const data = createPostResultManual.unwrap();
+          const signedTypedData = await wallet._signTypedData(
+            data.typedData.domain,
+            data.typedData.types,
+            data.typedData.value
+          );
+          const broadcastResult = await lensClient.transaction.broadcast({
+            id: data.id,
+            signature: signedTypedData,
+          });
+          const broadcastResultValue = broadcastResult.unwrap();
 
-      // createPostResult is a Result object
-      const createPostResultValue = createPostResult.unwrap();
+          if (!isRelayerResult(broadcastResultValue)) {
+            console.log(`Something went wrong`, broadcastResultValue);
+            return;
+          }
 
-      if (!isCreateDataAvailabilityPublicationResult(createPostResultValue)) {
-        console.log(`Something went wrong`, createPostResultValue);
-        setStatusMessage("Something went wrong while creating the post.");
-        return;
+          console.log(
+            `Transaction was successfuly broadcasted with txId ${broadcastResultValue.txId}`
+          );
+          await lensClient.transaction.waitForIsIndexed(
+            broadcastResultValue.txId
+          );
+          console.log(`Transaction was successfuly indexed`);
+          setStatusMessage("Post created");
+          const post = await lensClient.publication.fetch({
+            txHash: broadcastResultValue.txHash,
+          });
+          console.log(post);
+          setPostId(post.id);
+        }
       }
-
-      console.log(`DA post was created: `, createPostResultValue);
-      setStatusMessage("Post created on lens successfully!");
-
-      setPostId(createPostResultValue.id);
     } else {
       console.log(`User is not authenticated`);
       setStatusMessage("User is not authenticated");
       alert("Please authenticate first");
-
     }
   };
-
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
       <div className="w-full max-w-md p-8 m-4 bg-white rounded shadow-md">
-        <h1 className="mb-5 text-3xl font-bold text-center text-blue-500">Safe Upload</h1>
+        <h1 className="mb-5 text-3xl font-bold text-center text-blue-500">
+          Safe Upload
+        </h1>
         <button
           className="w-full px-4 py-2 mb-4 text-white bg-green-500 rounded hover:bg-green-700"
           onClick={authenticate}
@@ -221,7 +270,9 @@ const Authenticate = () => {
           <>
             {profile ? (
               <>
-                <p className="mt-4 text-lg text-center">Logged in as: {profile?.handle}</p>
+                <p className="mt-4 text-lg text-center">
+                  Logged in as: {profile?.handle}
+                </p>
                 <input
                   className="w-full p-2 mt-4 border border-gray-400 rounded"
                   type="file"
@@ -247,11 +298,15 @@ const Authenticate = () => {
                 >
                   Create Post
                 </button>
-                {statusMessage && <p className="mt-4 text-lg text-center">{statusMessage}</p>}
+                {statusMessage && (
+                  <p className="mt-4 text-lg text-center">{statusMessage}</p>
+                )}
 
                 {postId && (
                   <>
-                    <p className="mt-4 text-lg text-center">Post Id: {postId}</p>
+                    <p className="mt-4 text-lg text-center">
+                      Post Id: {postId}
+                    </p>
                     <a
                       href={`https://testnet.lenster.xyz/posts/${postId}`}
                       target="_blank"
@@ -271,7 +326,9 @@ const Authenticate = () => {
                 </button>
               </>
             ) : (
-              <p className="mt-4 text-lg text-center">Seem like you don't have a lens Profile</p>
+              <p className="mt-4 text-lg text-center">
+                Seem like you don't have a lens Profile
+              </p>
             )}
           </>
         )}
@@ -280,8 +337,7 @@ const Authenticate = () => {
         <p className="text-center text-red-500 text-xl">
           Test on Polygon Mumbai
         </p>
-        </div>
-
+      </div>
     </div>
   );
 };
