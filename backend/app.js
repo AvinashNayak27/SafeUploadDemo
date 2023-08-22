@@ -43,9 +43,24 @@ const generateSnapshots = async (videoPath) => {
   const probeData = await ffprobe(videoPath, { path: ffprobeStatic.path });
   const duration = probeData.streams[0].duration;
 
-  // Generate 10 random timestamps
-  const timestamps = Array.from({ length: 10 }, () => Math.floor(Math.random() * (duration - 2))+3);
-  console.log("timestamps: ", timestamps);
+  let timestamps = [];
+
+  if (duration > 10) {
+    const timestampsSet = new Set();
+
+    while (timestampsSet.size < 10) {
+      timestampsSet.add(Math.floor(Math.random() * (duration - 2)) + 3);
+    }
+
+    timestamps = [...timestampsSet];
+    console.log("Timestamps:", timestamps);
+  } else {
+    for (let i = 3; i < duration; i++) {
+      timestamps.push(i);
+    }
+    console.log("Timestamps:", timestamps);
+  }
+
 
   // Get the video name and create a directory for the snapshots
   const videoName = path.basename(videoPath, path.extname(videoPath));
@@ -103,7 +118,7 @@ const generateSnapshots = async (videoPath) => {
 async function uploadAsset(video) {
   console.log("Uploading asset to livepeer..");
 
-   const uploadingVideo = fs.createReadStream(video.videoUrl);
+  const uploadingVideo = fs.createReadStream(video.videoUrl);
 
   const asset = await provider.createAsset({
     sources: [
