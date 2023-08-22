@@ -22,6 +22,13 @@ const Authenticate = () => {
   const [content, setContent] = useState("");
   const [wallet, setWallet] = useState(null);
 
+  async function switchNetwork() {
+    await window.ethereum.request({
+    method: 'wallet_switchEthereumChain',
+    params: [{ chainId: '0x13881' }],   
+    });
+  }
+
   const authenticate = async () => {
     if (typeof window.ethereum !== "undefined") {
       // Request account access if needed
@@ -29,6 +36,7 @@ const Authenticate = () => {
 
       // We don't know window.ethereum prior to runtime.
       const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await switchNetwork();
       const signer = provider.getSigner();
       setWallet(signer);
 
