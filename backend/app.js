@@ -61,7 +61,6 @@ const generateSnapshots = async (videoPath) => {
     console.log("Timestamps:", timestamps);
   }
 
-
   // Get the video name and create a directory for the snapshots
   const videoName = path.basename(videoPath, path.extname(videoPath));
   const snapshotDirectory = path.join(outputDirectory, videoName);
@@ -78,8 +77,8 @@ const generateSnapshots = async (videoPath) => {
     fs.unlinkSync(snapshotPath);
   });
 
-  // Generate snapshots at the random timestamps
-  const promises = timestamps.map((timestamp, index) => {
+  // Generate snapshots sequentially at the random timestamps
+  for (let [index, timestamp] of timestamps.entries()) {
     const snapshotFilename = `snapshot_${index + 1}.jpg`;
     const ffmpegCommand = [
       "-i",
@@ -91,9 +90,8 @@ const generateSnapshots = async (videoPath) => {
       path.join(snapshotDirectory, snapshotFilename),
     ];
 
-    return new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
       const ffmpegProcess = spawn(ffmpeg, ffmpegCommand);
-
       ffmpegProcess.on("error", (error) => {
         console.error("FFmpeg process error:", error);
         reject(error);
@@ -109,11 +107,9 @@ const generateSnapshots = async (videoPath) => {
         }
       });
     });
-  });
-
-  // Wait for all snapshots to be generated
-  await Promise.all(promises);
+  }
 };
+
 
 async function uploadAsset(video) {
   console.log("Uploading asset to livepeer..");
